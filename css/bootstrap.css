@@ -6390,7 +6390,7 @@ button.close {
 }
 
 .modal-open {
-  overflow: hidden;
+  /* overflow: hidden; */
 }
 
 .modal {
@@ -6529,11 +6529,18 @@ button.close {
   .modal-sm {
     width: 300px;
   }
+ 
 }
 @media (min-width: 992px) {
   .modal-lg {
     width: 900px;
   }
+}
+@media (max-width:768px) {
+  .modal{
+    position: relative;
+  }
+  
 }
 .tooltip {
   position: absolute;
