@@ -597,28 +597,33 @@
 
 
 }());
+ 
+ 
 
-// 
+$(function() {
 
-// var myCarousel = document.querySelector('#myCarousel')
-// var carousel = new bootstrap.Carousel(myCarousel, {
-//   interval: 100000
-// })
+	function sort(slider) {
+		var dir = 'left';
 
-$('.carousel .carousel-item').each(function(){
-    var minPerSlide = 4;
-    var next = $(this).next();
-    if (!next.length) {
-    next = $(this).siblings(':first');
-    }
-    next.children(':first-child').clone().appendTo($(this));
-    
-    for (var i=0;i<minPerSlide;i++) {
-        next=next.next();
-        if (!next.length) {
-        	next = $(this).siblings(':first');
-      	}
-        
-        next.children(':first-child').clone().appendTo($(this));
-      }
+		$.each(slider.slides, function(i, item) {
+			var el = $(item);
+			el.removeClass('right left');
+			if (i >= slider.animatingTo && dir !== 'right') {
+				dir = 'right';
+			} else {
+				el.addClass(dir);
+			}
+		})
+	}
+
+	var slider = $('.flexslider-test');
+
+	var animWrap = $('#animation-wrap');
+
+	slider.flexslider({
+		animation: "slide",
+		animationSpeed: 5000,
+		before: sort,
+		start:sort
+	});
 });
