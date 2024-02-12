@@ -1287,7 +1287,7 @@ p {
 }
 
 #fh5co-type {
-  padding: 1em 0 0em 0;
+  padding: 1em 0 3em 0;
   background-color: transparent;
   background-size: cover;
   background-attachment: fixed;
@@ -1386,6 +1386,8 @@ img {
 .level-2 {
   position: absolute;
   -webkit-transition: all 1.5s;
+  height: 500px;
+  width: 800px;
 }
 
 .level-1 {
@@ -1400,13 +1402,17 @@ img {
 }
 
 .level-2 {
+  -webkit-filter: blur(3px);
+
   top: 25px;
-  left: 100px;
+  left: 40px;
   z-index: 2;
 }
 
 .level-3 {
   -webkit-filter: blur(5px);
+  height: 550px;
+  width: 750px;
 }
 
 .left .level-1{
