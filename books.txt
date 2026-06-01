@@ -1,0 +1,389 @@
+CREATE TABLE IF NOT EXISTS `books` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `title` VARCHAR(255) NOT NULL,
+  `author` VARCHAR(255) NOT NULL,
+  `price` DECIMAL(10,2) NOT NULL,
+  `image` VARCHAR(255) DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+-------------------------------------------------------------------
+routes.php
+$route['books/index/(:num)'] = 'books/index/$1';
+$route['books/create']       = 'books/create';       
+$route['books/edit/(:num)']   = 'books/edit/$1';     
+$route['books/delete/(:num)'] = 'books/delete/$1';   
+----------------------------------------------------------------------------------------
+controller/Books.php
+<?php
+defined('BASEPATH') or exit('No direct script access allowed');
+
+class Books extends CI_Controller
+{
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->load->model('Book_model');
+        $this->load->library('form_validation');
+        $this->load->library('session');
+    }
+
+    public function index()
+    {
+        $search_text = "";
+        if ($this->input->post('submit') != NULL) {
+            $search_text = $this->input->post('search');
+            $this->session->set_userdata(array("search" => $search_text));
+        } else {
+            if ($this->session->userdata('search') != NULL) {
+                $search_text = $this->session->userdata('search');
+            }
+        }
+
+        if ($this->input->post('clear') != NULL) {
+            $this->session->unset_userdata('search');
+            $search_text = "";
+        }
+
+        $config['base_url'] = base_url('books/index');
+        $config['total_rows'] = $this->Book_model->get_count($search_text);
+        $config['per_page'] = 1;
+        $config['uri_segment'] = 3;
+
+        $config['full_tag_open'] = '<ul class="pagination justify-content-center">';
+        $config['full_tag_close'] = '</ul>';
+        $config['num_tag_open'] = '<li class="page-item">';
+        $config['num_tag_close'] = '</li>';
+        $config['cur_tag_open'] = '<li class="page-item active"><a class="page-link" href="#">';
+        $config['cur_tag_close'] = '</a></li>';
+        $config['next_tag_open'] = '<li class="page-item">';
+        $config['next_tag_close'] = '</li>';
+        $config['prev_tag_open'] = '<li class="page-item">';
+        $config['prev_tag_close'] = '</li>';
+        $config['first_tag_open'] = '<li class="page-item">';
+        $config['first_tag_close'] = '</li>';
+        $config['last_tag_open'] = '<li class="page-item">';
+        $config['last_tag_close'] = '</li>';
+        $config['attributes'] = array('class' => 'page-link');
+
+        $this->pagination->initialize($config);
+        $page = ($this->uri->segment(3)) ? $this->uri->segment(3) : 0;
+
+        $data['books'] = $this->Book_model->get_books($config['per_page'], $page, $search_text);
+        $data['links'] = $this->pagination->create_links();
+        $data['search'] = $search_text;
+
+        $this->load->view('books/index', $data);
+    }
+
+    public function create()
+    {
+        
+        $this->form_validation->set_rules('title', 'Title', 'required');
+        $this->form_validation->set_rules('author', 'Author', 'required');
+        $this->form_validation->set_rules('price', 'Price', 'required|numeric');
+
+        if ($this->form_validation->run() == FALSE) {
+            $this->load->view('books/create');
+        } else {
+            $image_name = $this->upload_image();
+
+            $data = array(
+                'title' => $this->input->post('title'),
+                'author' => $this->input->post('author'),
+                'price' => $this->input->post('price'),
+                'image' => $image_name
+            );
+
+            $this->Book_model->insert_book($data);
+            $this->session->set_flashdata('success', 'Book added successfully!');
+            redirect('books');
+        }
+    }
+
+    public function edit($id)
+    {
+        $data['book'] = $this->Book_model->get_book_by_id($id);
+        if (empty($data['book'])) show_404();
+
+        $this->form_validation->set_rules('title', 'Title', 'required');
+        $this->form_validation->set_rules('author', 'Author', 'required');
+        $this->form_validation->set_rules('price', 'Price', 'required|numeric');
+
+        if ($this->form_validation->run() == FALSE) {
+            $this->load->view('books/edit', $data);
+        } else {
+            $data_update = array(
+                'title' => $this->input->post('title'),
+                'author' => $this->input->post('author'),
+                'price' => $this->input->post('price')
+            );
+
+            if (!empty($_FILES['image']['name'])) {
+                $image_name = $this->upload_image();
+                if ($image_name) {
+                    if (!empty($data['book']['image']) && file_exists('./uploads/' . $data['book']['image'])) {
+                        unlink('./uploads/' . $data['book']['image']);
+                    }
+                    $data_update['image'] = $image_name;
+                }
+            }
+
+            $this->Book_model->update_book($id, $data_update);
+            $this->session->set_flashdata('success', 'Book updated successfully!');
+            redirect('books');
+        }
+    }
+
+    public function delete($id)
+    {
+        $book = $this->Book_model->get_book_by_id($id);
+        if (!empty($book['image']) && file_exists('./uploads/' . $book['image'])) {
+            unlink('./uploads/' . $book['image']);
+        }
+        $this->Book_model->delete_book($id);
+        $this->session->set_flashdata('success', 'Book deleted successfully!');
+        redirect('books');
+    }
+
+    private function upload_image()
+    {
+        $config['upload_path']   = FCPATH . 'uploads/';
+        $config['allowed_types'] = 'gif|jpg|png|jpeg';
+        $config['max_size']      = 2048;
+        $config['encrypt_name']  = TRUE;
+
+        if (!is_dir($config['upload_path'])) {
+            mkdir($config['upload_path'], 0777, TRUE);
+        }
+
+        $this->load->library('upload');
+        $this->upload->initialize($config);
+
+        if ($this->upload->do_upload('image')) {
+            $upload_data = $this->upload->data();
+            return $upload_data['file_name'];
+        } else {
+            $error = $this->upload->display_errors();
+            $this->session->set_flashdata('error_msg', $error);
+            return NULL;
+        }
+    }
+}
+----------------------------------------------------------------------------------------------------
+modal/Book_model.php
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+class Book_model extends CI_Model {
+
+    public function get_books($limit, $start, $search = '') {
+        if (!empty($search)) {
+            $this->db->like('title', $search);
+            $this->db->or_like('author', $search);
+        }
+        $this->db->limit($limit, $start);
+        $this->db->order_by('id', 'DESC');
+        return $this->db->get('books')->result_array();
+    }
+
+    public function get_count($search = '') {
+        if (!empty($search)) {
+            $this->db->like('title', $search);
+            $this->db->or_like('author', $search);
+        }
+        return $this->db->count_all_results('books');
+    }
+
+    public function insert_book($data) {
+        return $this->db->insert('books', $data);
+    }
+
+    public function get_book_by_id($id) {
+        return $this->db->get_where('books', array('id' => $id))->row_array();
+    }
+
+    public function update_book($id, $data) {
+        $this->db->where('id', $id);
+        return $this->db->update('books', $data);
+    }
+
+    public function delete_book($id) {
+        return $this->db->delete('books', array('id' => $id));
+    }
+}
+----------------------------------------------------------------------------------------
+books/index.php
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Book Store CRUD</title>
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Book Inventory</h4>
+            <a href="<?php echo base_url('books/create'); ?>" class="btn btn-light btn-sm">Add New Book</a>
+        </div>
+        <div class="card-body">
+            
+            <?php if($this->session->flashdata('success')): ?>
+                <div class="alert alert-success"><?php echo $this->session->flashdata('success'); ?></div>
+            <?php endif; ?>
+
+            <!-- Search Form -->
+            <form method="post" action="<?php echo base_url('books/index'); ?>" class="form-inline mb-4 justify-content-end">
+                <input type="text" name="search" class="form-control form-control-sm mr-2" placeholder="Search title or author..." value="<?php echo $search; ?>">
+                <input type="submit" name="submit" value="Search" class="btn btn-sm btn-outline-primary mr-1">
+                <input type="submit" name="clear" value="Clear" class="btn btn-sm btn-outline-secondary">
+            </form>
+
+            <table class="table table-bordered table-striped">
+                <thead class="thead-dark">
+                    <tr>
+                        <th>Cover</th>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Price</th>
+                        <th width="180">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if(!empty($books)): foreach($books as $book): ?>
+                    <tr>
+                        <td class="text-center">
+                            <?php if($book['image']): ?>
+                                <img src="<?php echo base_url('uploads/'.$book['image']); ?>" width="50" class="img-thumbnail">
+                            <?php else: ?>
+                                <span class="text-muted">No Image</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo $book['title']; ?></td>
+                        <td><?php echo $book['author']; ?></td>
+                        <td>$<?php echo number_format($book['price'], 2); ?></td>
+                        <td>
+                            <a href="<?php echo base_url('books/edit/'.$book['id']); ?>" class="btn btn-sm btn-info">Edit</a>
+                            <a href="<?php echo base_url('books/delete/'.$book['id']); ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; else: ?>
+                    <tr><td colspan="5" class="text-center">No books found.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <!-- Pagination Links -->
+            <div class="mt-4">
+                <?php echo $links; ?>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+
+---------------------------------------------------------------------------
+books/create.php
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add New Book</title>
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white"><h5>Add New Book</h5></div>
+                <div class="card-body">
+                    <?php if(validation_errors()): ?>
+                        <div class="alert alert-danger"><?php echo validation_errors(); ?></div>
+                    <?php endif; ?>
+
+                    <?php echo form_open_multipart('books/create'); ?>
+                    
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" name="title" class="form-control" value="<?php echo set_value('title'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Author</label>
+                            <input type="text" name="author" class="form-control" value="<?php echo set_value('author'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Price ($)</label>
+                            <input type="text" name="price" class="form-control" value="<?php echo set_value('price'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Book Cover Image</label>
+                            <input type="file" name="image" class="form-control-file">
+                        </div>
+                        <button type="submit" class="btn btn-success">Save Book</button>
+                        <a href="<?php echo base_url('books'); ?>" class="btn btn-secondary">Cancel</a>
+                    <?php echo form_close(); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+
+------------------------------------------------------------------
+books/edit.php
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Book</title>
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white"><h5>Edit Book Details</h5></div>
+                <div class="card-body">
+                    <?php if(validation_errors()): ?>
+                        <div class="alert alert-danger"><?php echo validation_errors(); ?></div>
+                    <?php endif; ?>
+
+                    <?php echo form_open_multipart('books/edit/'.$book['id']); ?>
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" name="title" class="form-control" value="<?php echo set_value('title', $book['title']); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Author</label>
+                            <input type="text" name="author" class="form-control" value="<?php echo set_value('author', $book['author']); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Price ($)</label>
+                            <input type="text" name="price" class="form-control" value="<?php echo set_value('price', $book['price']); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label>Change Book Cover</label>
+                            <input type="file" name="image" class="form-control-file mb-2">
+                            <?php if($book['image']): ?>
+                                <p class="text-muted">Current Cover:</p>
+                                <img src="<?php echo base_url('uploads/'.$book['image']); ?>" width="80" class="img-thumbnail">
+                            <?php endif; ?>
+                        </div>
+                        <button type="submit" class="btn btn-info">Update Book</button>
+                        <a href="<?php echo base_url('books'); ?>" class="btn btn-secondary">Cancel</a>
+                    <?php echo form_close(); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
