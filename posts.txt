@@ -1,0 +1,196 @@
+routes.php
+$route['posts'] = 'posts/index';          
+$route['posts/create'] = 'posts/create';    
+$route['posts/edit/(:num)'] = 'posts/edit/$1'; 
+$route['posts/delete/(:num)'] = 'posts/delete/$1';  
+
+------------------------------------------------------------
+Post_model.php
+
+<?php
+class Post_model extends CI_Model {
+
+    public function __construct() {
+        $this->load->database();
+    }
+
+    public function get_posts($id = FALSE) {
+        if ($id === FALSE) {
+            return $this->db->get('posts')->result_array();
+        }
+        return $this->db->get_where('posts', array('id' => $id))->row_array();
+    }
+
+    public function insert_post($data) {
+        return $this->db->insert('posts', $data);
+    }
+
+    public function update_post($id, $data) {
+        $this->db->where('id', $id);
+        return $this->db->update('posts', $data);
+    }
+
+    public function delete_post($id) {
+        return $this->db->delete('posts', array('id' => $id));
+    }
+}
+
+--------------------------------------------------------------------------
+Posts.php
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+class Posts extends CI_Controller {
+
+    public function __construct() {
+        parent::__construct();
+        $this->load->model('post_model');
+    }
+
+    // Read All Posts
+    public function index() {
+        $this->load->model('Post_model');
+        $data['posts'] = $this->Post_model->get_posts(); 
+
+        // $data['posts'] = $this->post_model::get_posts();
+        $this->load->view('posts/index', $data);
+    }
+
+    // Create New Post
+    public function create() {
+        if ($this->input->post('submit')) {
+            $post_data = array(
+                'title'   => $this->input->post('title'),
+                'content' => $this->input->post('content')
+            );
+
+            if (!empty($_FILES['image']['name'])) {
+                $post_data['image'] = $this->upload_image();
+            }
+
+            $this->post_model->insert_post($post_data);
+            redirect('posts');
+        }
+        $this->load->view('posts/create');
+    }
+
+    // Update Existing Post
+    public function edit($id) {
+        $data['post'] = $this->post_model->get_posts($id);
+
+        if ($this->input->post('submit')) {
+            $post_data = array(
+                'title'   => $this->input->post('title'),
+                'content' => $this->input->post('content')
+            );
+
+            if (!empty($_FILES['image']['name'])) {
+                // Delete the old file if it exists
+                if (!empty($data['post']['image']) && file_exists('./uploads/' . $data['post']['image'])) {
+                    unlink('./uploads/' . $data['post']['image']);
+                }
+                $post_data['image'] = $this->upload_image();
+            }
+
+            $this->post_model->update_post($id, $post_data);
+            redirect('posts');
+        }
+        $this->load->view('posts/edit', $data);
+    }
+
+    // Delete Post & Asset
+    public function delete($id) {
+        $post = $this->post_model->get_posts($id);
+        if (!empty($post['image']) && file_exists('./uploads/' . $post['image'])) {
+            unlink('./uploads/' . $post['image']);
+        }
+        $this->post_model->delete_post($id);
+        redirect('posts');
+    }
+
+    // Private Upload Helper Routine
+    private function upload_image() {
+        $config['upload_path']   = './uploads/';
+        $config['allowed_types'] = 'gif|jpg|png|jpeg';
+        $config['max_size']      = 2048; // 2MB Max
+        $config['encrypt_name']  = TRUE; // Avoid file name collisions
+
+        $this->load->library('upload', $config);
+
+        if ($this->upload->do_upload('image')) {
+            $upload_data = $this->upload->data();
+            return $upload_data['file_name'];
+        } else {
+            return NULL;
+        }
+    }
+}
+
+----------------------------------------------------------------------------
+posts/index.php
+<h2>Blog Posts</h2>
+<a href="<?php echo base_url('posts/create'); ?>">Create New Post</a>
+  <a href="<?= base_url('auth/logout'); ?>" class="btn btn-outline-danger btn-sm">Logout</a>
+<table border="1" cellpadding="10" cellspacing="0" style="margin-top: 15px; width: 100%;">
+    <tr>
+        <th>Image</th>
+        <th>Title</th>
+        <th>Content</th>
+        <th>Actions</th>
+    </tr>
+    <?php foreach ($posts as $post): ?>
+    <tr>
+        <td>
+            <?php if (!empty($post['image'])): ?>
+                <img src="<?php echo base_url('uploads/' . $post['image']); ?>" width="100">
+            <?php else: ?>
+                No Image
+            <?php endif; ?>
+        </td>
+        <td><?php echo $post['title']; ?></td>
+        <td><?php echo substr($post['content'], 0, 100); ?>...</td>
+        <td>
+            <a href="<?php echo base_url('posts/edit/' . $post['id']); ?>">Edit</a> | 
+            <a href="<?php echo base_url('posts/delete/' . $post['id']); ?>" onclick="return confirm('Delete this post?');">Delete</a>
+        </td>
+    </tr>
+    <?php endforeach; ?>
+</table>
+
+----------------------------------------------------------------
+posts/create.php
+<h2>Create New Post</h2>
+<?php echo form_open_multipart('posts/create'); ?>
+    <label>Title</label><br>
+    <input type="text" name="title" required><br><br>
+
+    <label>Content</label><br>
+    <textarea name="content" rows="5" required></textarea><br><br>
+
+    <label>Post Image</label><br>
+    <input type="file" name="image"><br><br>
+
+    <input type="submit" name="submit" value="Publish">
+<?php echo form_close(); ?>
+<br><a href="<?php echo base_url('posts'); ?>">Back to list</a>
+--------------------------------------------------------------------
+posts/edit.php
+    
+<h2>Edit Post</h2>
+<?php echo form_open_multipart('posts/edit/' . $post['id']); ?>
+    <label>Title</label><br>
+    <input type="text" name="title" value="<?php echo $post['title']; ?>" required><br><br>
+
+    <label>Content</label><br>
+    <textarea name="content" rows="5" required><?php echo $post['content']; ?></textarea><br><br>
+
+    <label>Current Image</label><br>
+    <?php if (!empty($post['image'])): ?>
+        <img src="<?php echo base_url('uploads/' . $post['image']); ?>" width="150"><br>
+    <?php endif; ?>
+    <input type="file" name="image"><br><small>Leave blank to keep existing image</small><br><br>
+
+    <input type="submit" name="submit" value="Update">
+<?php echo form_close(); ?>
+<br><a href="<?php echo base_url('posts'); ?>">Back to list</a>
+ 

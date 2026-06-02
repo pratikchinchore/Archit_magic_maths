@@ -1,0 +1,315 @@
+CREATE TABLE `products` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `title` VARCHAR(255) NOT NULL,
+  `description` VARCHAR(255) NOT NULL,
+  `image` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--------------------------------------------------------------------
+routes.php
+
+$route['products'] = 'products/index';
+$route['products/create'] = 'products/create';
+$route['products/edit/(:num)'] = 'products/edit/$1';
+$route['products/delete/(:num)'] = 'products/delete/$1';
+ --------------------------------------------------------------------
+Products.php
+
+<?php
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+class Products extends CI_Controller {
+
+    public function __construct() {
+        parent::__construct();
+        $this->load->model('Product_model');
+    }
+
+    // Read Operation
+    public function index() {
+        $data['products'] = $this->Product_model->get_all();
+        $this->load->view('products/index', $data);
+    }
+
+    // Create Operation View & Submission
+    public function create() {
+        $this->form_validation->set_rules('title', 'Title', 'required');
+        $this->form_validation->set_rules('description', 'Description', 'required');
+
+        if ($this->form_validation->run() == FALSE) {
+            $this->load->view('products/create');
+        } else {
+            $image_name = $this->upload_image();
+            
+            if($image_name) {
+                $insert_data = array(
+                    'title' => $this->input->post('title'),
+                    'description' => $this->input->post('description'),
+                    'image' => $image_name
+                );
+                $this->Product_model->insert($insert_data);
+                $this->session->set_flashdata('success', 'Product created successfully!');
+                redirect('products');
+            } else {
+                $this->session->set_flashdata('error', $this->upload->display_errors());
+                $this->load->view('products/create');
+            }
+        }
+    }
+
+    // Update Operation View & Submission
+    public function edit($id) {
+        $data['product'] = $this->Product_model->get_by_id($id);
+        if(empty($data['product'])) show_404();
+
+        $this->form_validation->set_rules('title', 'Title', 'required');
+        $this->form_validation->set_rules('description', 'Description', 'required');
+
+        if ($this->form_validation->run() == FALSE) {
+            $this->load->view('products/edit', $data);
+        } else {
+            $update_data = array(
+                'title' => $this->input->post('title'),
+                'description' => $this->input->post('description')
+            );
+
+            // Check if a new file is uploaded
+            if (!empty($_FILES['image']['name'])) {
+                $image_name = $this->upload_image();
+                if($image_name) {
+                    // Remove old image file from disk
+                    if(file_exists('./uploads/'.$data['product']->image)) {
+                        unlink('./uploads/'.$data['product']->image);
+                    }
+                    $update_data['image'] = $image_name;
+                } else {
+                    $this->session->set_flashdata('error', $this->upload->display_errors());
+                    redirect('products/edit/'.$id);
+                }
+            }
+
+            $this->Product_model->update($id, $update_data);
+            $this->session->set_flashdata('success', 'Product updated successfully!');
+            redirect('products');
+        }
+    }
+
+    // Delete Operation
+    public function delete($id) {
+        $product = $this->Product_model->get_by_id($id);
+        if($product) {
+            if(file_exists('./uploads/'.$product->image)) {
+                unlink('./uploads/'.$product->image);
+            }
+            $this->Product_model->delete($id);
+            $this->session->set_flashdata('success', 'Product deleted successfully!');
+        }
+        redirect('products');
+    }
+
+    // Internal Image Upload Core Handler
+    private function upload_image() {
+        $config['upload_path']   = './uploads/';
+        $config['allowed_types'] = 'gif|jpg|png|jpeg';
+        $config['max_size']      = 2048; // 2MB limit
+        $config['encrypt_name']  = TRUE; // Encrypt name to prevent duplicate rewrites
+
+        $this->load->library('upload', $config);
+
+        if ($this->upload->do_upload('image')) {
+            $upload_data = $this->upload->data();
+            return $upload_data['file_name'];
+        } else {
+            return false;
+        }
+    }
+}
+
+--------------------------------------------------------------------------------
+Product_model.php
+
+<?php
+class Product_model extends CI_Model {
+
+    public function get_all() {
+        return $this->db->order_by('id', 'DESC')->get('products')->result();
+    }
+
+    public function get_by_id($id) {
+        return $this->db->get_where('products', array('id' => $id))->row();
+    }
+
+    public function insert($data) {
+        return $this->db->insert('products', $data);
+    }
+
+    public function update($id, $data) {
+        $this->db->where('id', $id);
+        return $this->db->update('products', $data);
+    }
+
+    public function delete($id) {
+        $this->db->where('id', $id);
+        return $this->db->delete('products');
+    }
+}
+
+-------------------------------------------------------------------------------
+products/index.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeIgniter 3 CRUD with Image</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+   
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+     <div class="mt-4">
+            <a href="<?php echo site_url('auth/logout'); ?>" class="btn btn-danger">Logout</a>
+        </div>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Product List</h2>
+        <a href="<?php echo base_url('products/create'); ?>" class="btn btn-primary">Add New Product</a>
+    </div>
+
+    <?php if($this->session->flashdata('success')): ?>
+        <div class="alert alert-success"><?php echo $this->session->flashdata('success'); ?></div>
+    <?php endif; ?>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <table class="table table-striped table-hover mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Image</th>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th width="200">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if(!empty($products)): foreach($products as $p): ?>
+                    <tr class="align-middle">
+                        <td><?php echo $p->id; ?></td>
+                        <td>
+                            <img src="<?php echo base_url('uploads/'.$p->image); ?>" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover;">
+                        </td>
+                        <td><strong><?php echo $p->title; ?></strong></td>
+                        <td><?php echo $p->description; ?></td>
+                        <td>
+                            <a href="<?php echo base_url('products/edit/'.$p->id); ?>" class="btn btn-sm btn-warning">Edit</a>
+                            <a href="<?php echo base_url('products/delete/'.$p->id); ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; else: ?>
+                    <tr>
+                        <td colspan="5" class="text-center p-4">No products found.</td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+--------------------------------------------------------------------------------
+create.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Product</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white"><h5>Add New Product</h5></div>
+                <div class="card-body">
+                    <?php if($this->session->flashdata('error')): ?>
+                        <div class="alert alert-danger"><?php echo $this->session->flashdata('error'); ?></div>
+                    <?php endif; ?>
+
+                    <?php echo form_open_multipart('products/create'); ?>
+                        <div class="mb-3">
+                            <label class="form-label">Product Title</label>
+                            <input type="text" name="title" class="form-control" value="<?php echo set_value('title'); ?>">
+                            <small class="text-danger"><?php echo form_error('title'); ?></small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="3"><?php echo set_value('description'); ?></textarea>
+                            <small class="text-danger"><?php echo form_error('description'); ?></small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Product Image</label>
+                            <input type="file" name="image" class="form-control" required>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <a href="<?php echo base_url('products'); ?>" class="btn btn-secondary">Back</a>
+                            <button type="submit" class="btn btn-success">Save Product</button>
+                        </div>
+                    <?php echo form_close(); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+--------------------------------------------------------------------------------
+edit.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Product</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark"><h5>Edit Product</h5></div>
+                <div class="card-body">
+                    <?php if($this->session->flashdata('error')): ?>
+                        <div class="alert alert-danger"><?php echo $this->session->flashdata('error'); ?></div>
+                    <?php endif; ?>
+
+                    <?php echo form_open_multipart('products/edit/'.$product->id); ?>
+                        <div class="mb-3">
+                            <label class="form-label">Product Title</label>
+                            <input type="text" name="title" class="form-control" value="<?php echo set_value('title', $product->title); ?>">
+                            <small class="text-danger"><?php echo form_error('title'); ?></small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="3"><?php echo set_value('description', $product->description); ?></textarea>
+                            <small class="text-danger"><?php echo form_error('description'); ?></small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Change Image (Leave blank to keep existing)</label>
+                            <input type="file" name="image" class="form-control mb-2">
+                            <div class="text-muted small">Current Asset:</div>
+                            <img src="<?php echo base_url('uploads/'.$product->image); ?>" class="img-thumbnail" style="width: 100px;">
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <a href="<?php echo base_url('products'); ?>" class="btn btn-secondary">Back</a>
+                            <button type="submit" class="btn btn-primary">Update Product</button>
+                        </div>
+                    <?php echo form_close(); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
